@@ -19,6 +19,9 @@ config:
 config = yaml.safe_load(open("config.yaml"))
 guild = config["config"]["guild"]
 
+# Bot version
+ver = "v1.0-alpha"
+
 if not os.path.exists(config["config"]["secretspath"]):
     os.makedirs(config["config"]["secretspath"])
 
@@ -92,7 +95,15 @@ async def sendbyfile(interaction: discord.Interaction, file: discord.Attachment,
         embed = discord.Embed(color=discord.Color.red(),title="Error: can't read that file format :c")
         await interaction.followup.send(ephemeral=True,embed=embed)
 
+@bot.tree.command(name="version",description="Version of XCAIS")
+async def version(interaction: discord.Interaction):
+    
+    embed = discord.Embed(color=discord.Color.orange(),title="XCAIS",description=f"""
+Xportation Corporation Automated Intercom System
 
+Running Version: `{ver}`""")
+    
+    await interaction.response.send_message(embed=embed,ephemeral=True)
 
 @bot.event
 async def on_message(message: discord.Message):
