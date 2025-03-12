@@ -36,6 +36,7 @@ intents.guilds = True
 intents.members = True
 
 bot = Bot(command_prefix="x>",intents=intents)
+    
 
 @bot.tree.command(name="say",description="Sends a message")
 @discord.app_commands.describe(message="Message to send", channel="To send message too")
@@ -52,7 +53,7 @@ async def send_message(interaction: discord.Interaction ,message: str, channel: 
 async def senddm(interaction: discord.Interaction, message: str, user: discord.Member):
     await interaction.response.defer()
     if user.id == bot.user.id:
-        embed = discord.Embed(color=discord.Color.red(),title="Error: I cant send to my self bro")
+        embed = discord.Embed(color=discord.Color.red(),title="Error: i can't DM myself >:C")
         await interaction.followup.send(ephemeral=True,embed=embed)
     
     await user.send(message)
@@ -72,7 +73,7 @@ async def sendbyfile(interaction: discord.Interaction, file: discord.Attachment,
     await interaction.response.defer()
     if not file is None:
         if not "text" in file.content_type:
-            embed = discord.Embed(color=discord.Color.red(),title="Error: Umm.. I cant read that file format")
+            embed = discord.Embed(color=discord.Color.red(),title="Error: can't read that file format :c")
             await interaction.followup.send(ephemeral=True,embed=embed)
         else:
             await file.save("temp.txt")
@@ -87,7 +88,7 @@ async def sendbyfile(interaction: discord.Interaction, file: discord.Attachment,
             embed = discord.Embed(color=discord.Color.green(),title="Sent!")
             await interaction.followup.send(ephemeral=True,embed=embed)
     else:
-        embed = discord.Embed(color=discord.Color.red(),title="Error: Umm.. I cant read that file format")
+        embed = discord.Embed(color=discord.Color.red(),title="Error: can't read that file format :c")
         await interaction.followup.send(ephemeral=True,embed=embed)
 
 
