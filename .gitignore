@@ -2,6 +2,7 @@ bin
 env
 lib
 secrets
+data
 **/.DS_Store
 config.yaml
 **/__pycache__
