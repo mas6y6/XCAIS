@@ -3,3 +3,5 @@ env
 lib
 secrets
 **/.DS_Store
+config.yaml
+**/__pycache__
