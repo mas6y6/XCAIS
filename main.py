@@ -14,6 +14,7 @@ config:
     guild: 
     data: ./data
 """)
+    f.close()
 
 config = yaml.safe_load(open("config.yaml"))
 guild = config["config"]["guild"]
