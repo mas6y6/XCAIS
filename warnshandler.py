@@ -15,6 +15,14 @@ class WarningHandler:
                 with open(os.path.join(path,"warns.json"), "w") as file:
                     json.dump(jsn, file, indent=4)
 
+    async def getuser(self,userid):
+        jsn = json.load(open(os.path.join(self.path,"warns.json"),"r"))
+        if str(userid) not in jsn[str(self.guild.id)]:
+            jsn[str(self.guild.id)][str(userid)] = {"timeout_count":0,"max_warnings_before_timeout":3,"warns":[]}
+        
+        with open(os.path.join(self.path,"warns.json"), "w", encoding="utf-8") as file:
+            json.dump(jsn, file, indent=4, default=str)
+
     async def addwarning(self,userid,reason,assignedby,expire=None):
         jsn = json.load(open(os.path.join(self.path,"warns.json"),"r"))
         
@@ -63,3 +71,11 @@ class Warning:
         self.expire = expire
         self.userid = userid
         self.assignedby = assignedby
+
+class User:
+    def __init__(self,data):
+        self.timeout_count = data["timeout_count"]
+        self.max_warnings_before_timeout = data["max_warnings_before_timeout"]
+        self.warns: list[Warning] = []
+        for i in data["warns"]:
+            self.warns.append(Warning(i["reason"],i["timestamp"],i["expire"],i["userid"],i["assignedby"]))
