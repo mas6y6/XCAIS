@@ -148,10 +148,22 @@ async def warn(interaction: discord.Interaction,user: discord.Member, reason: st
         await interaction.followup.send(embed=embed,ephemeral=True)
         return None
     
-    await warnhandler.addwarning(user.id,reason,interaction.user.id)
-    await sendtoconsole(f"[WARN] {user.name} has been warned")
+    status = await warnhandler.addwarning(user.id,reason,interaction.user.id)
+    await sendtoconsole(f"[WARN] {user.name} has been warned\n {reason} \n by {interaction.user.name}")
     
-    embed = discord.Embed(color=discord.Color.green(),title=f"**{user.name} has been warned**")
+    if status["status"] == "warned":
+        embed = discord.Embed(color=discord.Color.green(),title=f"**{user.name} has been warned**")
+    elif status["status"] == "timeout":
+        embed = discord.Embed(color=discord.Color.orange(),title=f"**{user.name} has been timed out**",description=f"""**{user.name}** has been timed out for {status["days"]}""")
+    elif status["status"] == "forbidden":
+        embed = discord.Embed(color=discord.Color.green(),title=f"**{user.name} has been warned but could not be timed out**")
+    elif status["status"] == "askowner_month_ban":
+        embed = discord.Embed(color=discord.Color.red(),title=f"**{xcaisguild.get_member(config["config"]["owner"]).name} has been notifed about your many warnings**")
+    elif status["status"] == "askowner_perm_ban":
+        embed = discord.Embed(color=discord.Color.red(),title=f"**{xcaisguild.get_member(config["config"]["owner"]).name} has been notifed about your many warnings**")
+        await 
+    else:
+        pass
     await interaction.followup.send(embed=embed,ephemeral=True)
 
 @bot.tree.command(name="warns",description="View warns")
