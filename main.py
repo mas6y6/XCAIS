@@ -161,7 +161,6 @@ async def warn(interaction: discord.Interaction,user: discord.Member, reason: st
         embed = discord.Embed(color=discord.Color.red(),title=f"**{xcaisguild.get_member(config["config"]["owner"]).name} has been notifed about your many warnings**")
     elif status["status"] == "askowner_perm_ban":
         embed = discord.Embed(color=discord.Color.red(),title=f"**{xcaisguild.get_member(config["config"]["owner"]).name} has been notifed about your many warnings**")
-        await 
     else:
         pass
     await interaction.followup.send(embed=embed,ephemeral=True)
