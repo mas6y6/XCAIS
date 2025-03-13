@@ -36,18 +36,46 @@ class WarningHandler:
             "userid": userid,
             "assignedby": assignedby
         })
-            
+        
+        returnstatus = {"status":"warned"}
+        
         if len(jsn[str(self.guild.id)][str(userid)]["warns"]) >= jsn[str(self.guild.id)][str(userid)]["max_warnings_before_timeout"]:
-            duration = datetime.timedelta(days=1)
-            until = datetime.datetime.now(datetime.timezone.utc) + duration
+            days = 1
+            mb = False
+            pb = False
+            if len(jsn[str(self.guild.id)][str(userid)]["warns"]) == 3:
+                days = 1
+            elif len(jsn[str(self.guild.id)][str(userid)]["warns"]) == 6:
+                days = 3
+            elif len(jsn[str(self.guild.id)][str(userid)]["warns"]) == 9:
+                mb = True
+                returnstatus = {"status":"askowner_month_ban"}
+            elif len(jsn[str(self.guild.id)][str(userid)]["warns"]) == 12:
+                pb = True
+                returnstatus = {"status":"askowner_perm_ban"}
+            else:
+                pass
             
             jsn[str(self.guild.id)][str(userid)]["timeout_count"] += 1
             jsn[str(self.guild.id)][str(userid)]["max_warnings_before_timeout"] += 3
             
-            await self.guild.get_member(int(userid)).timeout(until)
+            if not mb and not pb:
+                duration = datetime.timedelta(days=days)
+                
+                until = datetime.datetime.now(datetime.timezone.utc) + duration
+                
+                try:
+                    await self.guild.get_member(int(userid)).timeout(until)
+                except discord.errors.Forbidden:
+                    returnstatus = {"status":"forbidden"}
+                else:
+                    returnstatus = {"status":"timeout","days":days}
+                
             
         with open(os.path.join(self.path,"warns.json"), "w", encoding="utf-8") as file:
             json.dump(jsn, file, indent=4, default=str)
+            
+        return returnstatus
             
     async def getwarns(self, userid) -> list[Warning]:
         jsn = json.load(open(os.path.join(self.path, "warns.json"), "r"))
