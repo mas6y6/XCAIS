@@ -22,6 +22,8 @@ class WarningHandler:
         
         with open(os.path.join(self.path,"warns.json"), "w", encoding="utf-8") as file:
             json.dump(jsn, file, indent=4, default=str)
+            
+        return User(jsn[str(self.guild.id)][str(userid)])
 
     async def addwarning(self,userid,reason,assignedby,expire=None):
         jsn = json.load(open(os.path.join(self.path,"warns.json"),"r"))
@@ -90,7 +92,34 @@ class WarningHandler:
         
         warnslist.sort(key=lambda x: x.timestamp, reverse=True)
         
+        with open(os.path.join(self.path,"warns.json"), "w", encoding="utf-8") as file:
+            json.dump(jsn, file, indent=4, default=str)
         return warnslist
+
+    async def getwarnindex(self, userid, reason):
+        jsn = json.load(open(os.path.join(self.path, "warns.json"), "r"))
+        
+        if str(userid) not in jsn[str(self.guild.id)]:
+            jsn[str(self.guild.id)][str(userid)] = {"timeout_count": 0, "max_warnings_before_timeout": 3, "warns": []}
+        
+        for index, warn in enumerate(jsn[str(self.guild.id)][str(userid)]["warns"]):
+            if warn["reason"] == reason:
+                return index
+        
+        with open(os.path.join(self.path,"warns.json"), "w", encoding="utf-8") as file:
+            json.dump(jsn, file, indent=4, default=str)
+        return None
+    
+    async def deletewarning(self, userid, index):
+        jsn = json.load(open(os.path.join(self.path, "warns.json"), "r"))
+        
+        if str(userid) not in jsn[str(self.guild.id)]:
+            jsn[str(self.guild.id)][str(userid)] = {"timeout_count": 0, "max_warnings_before_timeout": 3, "warns": []}
+        
+        jsn[str(self.guild.id)][str(userid)]["warns"].pop(index)
+        
+        with open(os.path.join(self.path,"warns.json"), "w", encoding="utf-8") as file:
+            json.dump(jsn, file, indent=4, default=str)
 
 class Warning:
     def __init__(self,reason, timestamp, expire, userid, assignedby):

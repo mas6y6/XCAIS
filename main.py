@@ -4,7 +4,7 @@ import discord, os, sys, logging, yaml
 from discord.ext.commands.bot import Bot
 import modals
 from datetime import datetime
-from warnshandler import WarningHandler, Warning
+from warnshandler import WarningHandler, Warning, User
 import discord.ext.commands
 
 # Creates config.yaml if it doesnt exist
@@ -67,7 +67,61 @@ async def sendtoconsole(text: str,embed=None):
     
     t = f"<t:{int(time.time())}:R> [**{bot.user.display_name}**]: {text}"
     
-    await consolechannel.send(t,embed=None)
+    if not consolechannel == None:
+        await consolechannel.send(t,embed=None)
+
+
+class DeleteWarnMenu(discord.ui.View):
+    def __init__(self, user: discord.Member,warns: list[Warning], timeout=180):
+        super().__init__(timeout=timeout)
+        self.user = user
+        
+        opt = []
+        
+        for i in warns:
+            opt.append(discord.SelectOption(label=i.reason))
+        
+        self.select = discord.ui.Select(
+            placeholder="Select a warning to view",
+            min_values=1,
+            max_values=1,
+            options=opt
+        )
+        self.select.callback = self.select_callback
+        self.add_item(self.select)
+
+    async def select_callback(self, interaction: discord.Interaction):
+        global warnhandler
+        selected_warn = self.select.values[0]
+        
+        iw = await warnhandler.getwarnindex(self.user.id,selected_warn)
+        await warnhandler.deletewarning(self.user.id,iw)
+        
+        embed = discord.Embed(color=discord.Color.red(),title="**Warning removed**")
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+class DeleteWarnView(discord.ui.View):
+    def __init__(self, user: discord.Member, timeout = 180, zerowarns=False):
+        super().__init__(timeout=timeout)
+        self.user = user
+        
+        self.deletewarnbutton = discord.ui.Button(label="Delete a warning",style=discord.ButtonStyle.danger, disabled=zerowarns)
+        self.deletewarnbutton.callback = self.deletewarn
+        
+        self.add_item(self.deletewarnbutton)
+    
+    async def deletewarn(self,interaction: discord.Interaction):
+        if not hasperm(self.user,config["permconfig"]["moderatorcommands"]):
+            embed = discord.Embed(color=discord.Color.red(),title="**You dont have access to this command**")
+            await interaction.response.send_message(embed=embed,ephemeral=True)
+        else:
+            warns = await warnhandler.getwarns(self.user.id)
+            embed = discord.Embed(
+                color=discord.Color.red(),
+                title=f"{self.user.name} has {len(warns)} warnings",
+                description="Select the warning from the drop menu below to delete"
+            )
+            await interaction.response.send_message(embed=embed,view=DeleteWarnMenu(self.user,warns),ephemeral=True)
 
 @bot.tree.command(name="say",description="Sends a message")
 @discord.app_commands.describe(message="Message to send", channel="To send message too")
@@ -99,6 +153,11 @@ async def senddm(interaction: discord.Interaction, message: str, user: discord.M
 @discord.app_commands.describe(channel="Channel to send message to")
 async def sendlongmessage(interaction: discord.Interaction, channel: discord.TextChannel):
     await interaction.response.send_modal(modals.SendTextModal(channel))
+
+@bot.tree.command(name="deletewarn", description="Deletes a warning")
+@discord.app_commands.describe(user="User")
+async def deletewarning(interaction: discord.Interaction):
+    pass
 
 @bot.tree.command(name="sendfile", description="Sends the contents of the file (Text files only)")
 @discord.app_commands.describe(file="File to send content from.",channel="Channel to send")
@@ -174,15 +233,17 @@ async def warns(interaction: discord.Interaction, user: discord.Member = None):
     if user is None:
         user = interaction.user
     
-    warnings: list[Warning] = await warnhandler.getwarns(user.id)
-    if len(warnings) == 0:
-        embed = discord.Embed(color=discord.Color.orange(), title=f"**{user.name} has no warnings**")
+    userd: User = await warnhandler.getuser(user.id)
+    if len(userd.warns) == 0:
+        embed = discord.Embed(color=discord.Color.orange(), title=f"**{user.name} has 0 warnings**",description=f"""**{user.name}** has **{len(userd.warns)} warnings**
+**{userd.max_warnings_before_timeout - len(userd.warns)}** More warnings until next punish ment (You are in the safe for now :) )""")
     else:
-        embed = discord.Embed(color=discord.Color.orange(), title=f"**Warnings for {user.name}**",description=f"**{user.name}** has **{len(warnings)} warnings**")
-        for i in warnings:
+        embed = discord.Embed(color=discord.Color.orange(), title=f"**Warnings for {user.name}**",description=f"""**{user.name}** has **{len(userd.warns)} warnings**
+**{userd.max_warnings_before_timeout - len(userd.warns)}** More warnings until more suffering :3""")
+        for i in userd.warns:
             embed.add_field(name=f"Moderator: {interaction.guild.get_member(i.assignedby).global_name}",value=f"""{i.reason} - <t:{int(i.timestamp)}:R>""",inline=False)
     
-    await interaction.followup.send(embed=embed, ephemeral=True)
+    await interaction.followup.send(embed=embed, ephemeral=True, view=DeleteWarnView(user,zerowarns=len(userd.warns) == 0))
 
 @bot.event
 async def on_message(message: discord.Message):
@@ -213,13 +274,13 @@ async def on_ready():
     
     await sendtoconsole("Bot restarted syncing commands...")
     
+    warnhandler = WarningHandler(config["config"]["data"],bot.get_guild(config["config"]["guild"]))
+    await sendtoconsole("Warning handler thread started")
+    
     c = await bot.tree.sync()
     print(f"Synced {len(c)} commands")
 
     await sendtoconsole(f"Synced {len(c)} slash commands.")
-    await sendtoconsole("Starting warning handler")
-    warnhandler = WarningHandler(config["config"]["data"],bot.get_guild(config["config"]["guild"]))
-    await sendtoconsole("Warning handler thread started")
 
 @bot.event
 async def on_error(event: str, *args, **kwargs):
@@ -253,13 +314,16 @@ async def command_error(interaction: discord.Interaction, error: discord.app_com
     os.remove(log_filename)
     
 
-def hasperm(userid: discord.Member,permlist: list[int]):
+def hasperm(userid: discord.Member, permlist: list[int]):
     if "everyone" in permlist:
         return True
-    
+
     for role in userid.roles:
-        if role.id in permlist:
+        print(f"Checking role: {role.id}")  # Debug statement
+        if int(role.id) in permlist:
+            print(f"Role {role.id} found in permission list")  # Debug statement
             return True
+    print("No matching roles found")  # Debug statement
     return False
 
 bot.run(token=open(os.path.join(config["config"]["secretspath"],"token.key"),"r").readline())
