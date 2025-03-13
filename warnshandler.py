@@ -1,4 +1,5 @@
 import json, discord, os, datetime, time
+import random
 
 class WarningHandler:
     def __init__(self, path, guild: discord.Guild):
@@ -36,7 +37,8 @@ class WarningHandler:
             "timestamp":datetime.datetime.now().timestamp(),
             "expire": expire,
             "userid": userid,
-            "assignedby": assignedby
+            "assignedby": assignedby,
+            "id":random.randint(10000000000000000000000,99999999999999999999999)
         })
         
         returnstatus = {"status":"warned"}
@@ -67,7 +69,9 @@ class WarningHandler:
                 until = datetime.datetime.now(datetime.timezone.utc) + duration
                 
                 try:
-                    await self.guild.get_member(int(userid)).timeout(until)
+                    # TODO: Uncomment this line below as its the function that times out users
+                    # await self.guild.get_member(int(userid)).timeout(until)
+                    pass
                 except discord.errors.Forbidden:
                     returnstatus = {"status":"forbidden"}
                 else:
@@ -88,7 +92,7 @@ class WarningHandler:
         warnslist = []
         
         for i in jsn[str(self.guild.id)][str(userid)]["warns"]:
-            warnslist.append(Warning(i["reason"], i["timestamp"], i["expire"], i["userid"], i["assignedby"]))
+            warnslist.append(Warning(i["reason"], i["timestamp"], i["expire"], i["userid"], i["assignedby"], i["id"]))
         
         warnslist.sort(key=lambda x: x.timestamp, reverse=True)
         
@@ -96,18 +100,19 @@ class WarningHandler:
             json.dump(jsn, file, indent=4, default=str)
         return warnslist
 
-    async def getwarnindex(self, userid, reason):
+    async def getwarnindex(self, userid, id):
         jsn = json.load(open(os.path.join(self.path, "warns.json"), "r"))
         
         if str(userid) not in jsn[str(self.guild.id)]:
             jsn[str(self.guild.id)][str(userid)] = {"timeout_count": 0, "max_warnings_before_timeout": 3, "warns": []}
         
-        for index, warn in enumerate(jsn[str(self.guild.id)][str(userid)]["warns"]):
-            if warn["reason"] == reason:
-                return index
-        
         with open(os.path.join(self.path,"warns.json"), "w", encoding="utf-8") as file:
             json.dump(jsn, file, indent=4, default=str)
+        
+        for index, warn in enumerate(jsn[str(self.guild.id)][str(userid)]["warns"]):
+            if warn["id"] == id:
+                return index
+        
         return None
     
     async def deletewarning(self, userid, index):
@@ -122,12 +127,13 @@ class WarningHandler:
             json.dump(jsn, file, indent=4, default=str)
 
 class Warning:
-    def __init__(self,reason, timestamp, expire, userid, assignedby):
+    def __init__(self,reason, timestamp, expire, userid, assignedby, id):
         self.reason = reason
         self.timestamp = timestamp
         self.expire = expire
         self.userid = userid
         self.assignedby = assignedby
+        self.id = id
 
 class User:
     def __init__(self,data):
@@ -135,4 +141,4 @@ class User:
         self.max_warnings_before_timeout = data["max_warnings_before_timeout"]
         self.warns: list[Warning] = []
         for i in data["warns"]:
-            self.warns.append(Warning(i["reason"],i["timestamp"],i["expire"],i["userid"],i["assignedby"]))
+            self.warns.append(Warning(i["reason"],i["timestamp"],i["expire"],i["userid"],i["assignedby"],i["id"]))

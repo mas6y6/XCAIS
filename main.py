@@ -19,6 +19,8 @@ config:
     data: ./data # Store data for server to use like warns
     consolechannel: # Channel ID to the console channel
     owner: # User ID of the owner of the server
+    moderatorchannel: # Moderator channel of the server
+    moderatorrole: # Role ID for Moderators`
 
 permconfig:
     # Include the ID's to the roles to give moderator commands too
@@ -69,8 +71,6 @@ async def sendtoconsole(text: str,embed=None):
     
     if not consolechannel == None:
         await consolechannel.send(t,embed=None)
-
-
 class DeleteWarnMenu(discord.ui.View):
     def __init__(self, user: discord.Member,warns: list[Warning], timeout=180):
         super().__init__(timeout=timeout)
@@ -79,7 +79,7 @@ class DeleteWarnMenu(discord.ui.View):
         opt = []
         
         for i in warns:
-            opt.append(discord.SelectOption(label=i.reason))
+            opt.append(discord.SelectOption(label=i.reason,value=i.id))
         
         self.select = discord.ui.Select(
             placeholder="Select a warning to view",
@@ -92,13 +92,31 @@ class DeleteWarnMenu(discord.ui.View):
 
     async def select_callback(self, interaction: discord.Interaction):
         global warnhandler
-        selected_warn = self.select.values[0]
+        selected_warn = int(self.select.values[0])
         
         iw = await warnhandler.getwarnindex(self.user.id,selected_warn)
         await warnhandler.deletewarning(self.user.id,iw)
         
+        warns = await warnhandler.getwarns(self.user.id)
+        opt = []
+        for i in warns:
+            opt.append(discord.SelectOption(label=i.reason))
+        
+        self.select.options = opt
+        
+        embed = discord.Embed(
+            color=discord.Color.red(),
+            title=f"{self.user.name} has {len(warns)} warnings",
+            description="Select the warning from the drop menu below to delete"
+        )
+        
+        if len(opt) == 0:
+            await interaction.delete_original_response()
+        else:
+            await interaction.response.edit_message(embed=embed,view=self)
+        
         embed = discord.Embed(color=discord.Color.red(),title="**Warning removed**")
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+        await interaction.followup.send(embed=embed, ephemeral=True)
 
 class DeleteWarnView(discord.ui.View):
     def __init__(self, user: discord.Member, timeout = 180, zerowarns=False):
@@ -111,7 +129,7 @@ class DeleteWarnView(discord.ui.View):
         self.add_item(self.deletewarnbutton)
     
     async def deletewarn(self,interaction: discord.Interaction):
-        if not hasperm(self.user,config["permconfig"]["moderatorcommands"]):
+        if not hasperm(interaction.user,config["permconfig"]["moderatorcommands"]):
             embed = discord.Embed(color=discord.Color.red(),title="**You dont have access to this command**")
             await interaction.response.send_message(embed=embed,ephemeral=True)
         else:
@@ -121,7 +139,66 @@ class DeleteWarnView(discord.ui.View):
                 title=f"{self.user.name} has {len(warns)} warnings",
                 description="Select the warning from the drop menu below to delete"
             )
-            await interaction.response.send_message(embed=embed,view=DeleteWarnMenu(self.user,warns),ephemeral=True)
+            
+            if len(warns) == 0:
+                embed = discord.Embed(
+                    color=discord.Color.red(),
+                    title=f"{self.user.name} has 0 warnings",
+                )
+                await interaction.response.send_message(embed=embed,ephemeral=True)
+            else:
+                embed = discord.Embed(
+                color=discord.Color.red(),
+                title=f"{self.user.name} has {len(warns)} warnings",
+                description="Select the warning from the drop menu below to delete"
+            )
+                await interaction.response.send_message(embed=embed,view=DeleteWarnMenu(self.user,warns),ephemeral=True)
+
+class BanView(discord.ui.View):
+    def __init__(self,userid, timeout=None, action="monthban"):
+        self.userid = userid
+        self.action = action
+        super().__init__(timeout=timeout)
+    
+    @discord.ui.button(label="Cancel",style=discord.ButtonStyle.grey)
+    async def cancel(self, interaction: discord.Interaction, button: discord.Button):
+        button.disabled = True
+        embed = discord.Embed(title="Operation Canceled")
+        await interaction.response.edit_message(embed=embed,view=None)
+        
+    @discord.ui.button(label="Proceed",style=discord.ButtonStyle.red)
+    async def proceed(self, interaction: discord.Interaction, button: discord.Button):
+        try:
+            member: discord.Member = await xcaisguild.get_member(self.userid)
+            
+        except:
+            embed = discord.Embed(title="An error occurred", description="An unexpected error has occurred")
+            traceback.print_exc()
+        await interaction.response.pong()
+ 
+
+async def notifyowner(userid, md = True, warnings = 9):
+    moderatorchan: discord.TextChannel = xcaisguild.get_channel(config["config"]["moderatorchannel"])
+    target: discord.Member = xcaisguild.get_member(userid)
+    
+    if target is None:
+        raise TypeError("Target is NoneType")
+    else:
+        if md:
+            embed = discord.Embed(
+                color=discord.Color.red(),
+                title=f"**{target.name}** has reached {warnings} warnings",
+                description=f"""{xcaisguild.get_role(config["config"]["moderatorrole"]).mention}
+                I am programmed to notify all moderators of this server to ask you for your consent to **permanently ban {target.name}** from the server due to the number of warnings received."""
+            )
+        else:
+            embed = discord.Embed(
+                color=discord.Color.red(),
+                title=f"**{target.name}** has reached {warnings} warnings",
+                description=f"""{xcaisguild.get_role(config["config"]["moderatorrole"]).mention}
+                I am programmed to notify all moderators of this server to ask you for your consent to **temporarily ban {target.name} for one month** from the server due to the number of warnings received.""")
+
+    await moderatorchan.send(embed=embed,view=BanView(userid,action=md))
 
 @bot.tree.command(name="say",description="Sends a message")
 @discord.app_commands.describe(message="Message to send", channel="To send message too")
@@ -156,8 +233,9 @@ async def sendlongmessage(interaction: discord.Interaction, channel: discord.Tex
 
 @bot.tree.command(name="deletewarn", description="Deletes a warning")
 @discord.app_commands.describe(user="User")
-async def deletewarning(interaction: discord.Interaction):
-    pass
+async def deletewarning(interaction: discord.Interaction, user: discord.Member):
+    await interaction.response.defer(ephemeral=True)
+    
 
 @bot.tree.command(name="sendfile", description="Sends the contents of the file (Text files only)")
 @discord.app_commands.describe(file="File to send content from.",channel="Channel to send")
@@ -202,8 +280,13 @@ async def warn(interaction: discord.Interaction,user: discord.Member, reason: st
     global warnhandler
     await interaction.response.defer()
     
-    if not hasperm(user, config["permconfig"]["moderatorcommands"]):
+    if not hasperm(interaction.user, config["permconfig"]["moderatorcommands"]):
         embed = discord.Embed(color=discord.Color.red(),title="**You dont have access to this command**")
+        await interaction.followup.send(embed=embed,ephemeral=True)
+        return None
+    
+    if user.id == bot.user.id:
+        embed = discord.Embed(color=discord.Color.red(),title="**I cant warn myself >:C**")
         await interaction.followup.send(embed=embed,ephemeral=True)
         return None
     
@@ -218,8 +301,10 @@ async def warn(interaction: discord.Interaction,user: discord.Member, reason: st
         embed = discord.Embed(color=discord.Color.green(),title=f"**{user.name} has been warned but could not be timed out**")
     elif status["status"] == "askowner_month_ban":
         embed = discord.Embed(color=discord.Color.red(),title=f"**{xcaisguild.get_member(config["config"]["owner"]).name} has been notifed about your many warnings**")
+        await notifyowner(user.id,md=False)
     elif status["status"] == "askowner_perm_ban":
         embed = discord.Embed(color=discord.Color.red(),title=f"**{xcaisguild.get_member(config["config"]["owner"]).name} has been notifed about your many warnings**")
+        await notifyowner(user.id,md=True)
     else:
         pass
     await interaction.followup.send(embed=embed,ephemeral=True)
@@ -232,6 +317,11 @@ async def warns(interaction: discord.Interaction, user: discord.Member = None):
     
     if user is None:
         user = interaction.user
+    
+    if user.id == bot.user.id:
+        embed = discord.Embed(color=discord.Color.red(),title="**I cant warn myself >:C**")
+        await interaction.followup.send(embed=embed,ephemeral=True)
+        return None
     
     userd: User = await warnhandler.getuser(user.id)
     if len(userd.warns) == 0:
@@ -312,18 +402,27 @@ async def command_error(interaction: discord.Interaction, error: discord.app_com
         traceback.print_exc()
 
     os.remove(log_filename)
+
+@bot.command(name="test")
+async def testcommand(ctx: discord.ext.commands.Context, userid: int):
+    moderatorchan: discord.TextChannel = xcaisguild.get_channel(config["config"]["moderatorchannel"])
+    target: discord.Member = xcaisguild.get_member(userid)
+    warnings = 9
     
+    embed = discord.Embed(
+                color=discord.Color.red(),
+                title=f"**{target.name}** has reached 9 warnings",
+                description=f"""{xcaisguild.get_role(config["config"]["moderatorrole"]).mention}
+                I am programmed to notify all moderators of this server to ask you for your consent to **temporarily ban {target.name} for one month** from the server due to the number of warnings received.""")
+    await moderatorchan.send(embed=embed,view=BanView(userid))
 
 def hasperm(userid: discord.Member, permlist: list[int]):
     if "everyone" in permlist:
         return True
 
     for role in userid.roles:
-        print(f"Checking role: {role.id}")  # Debug statement
         if int(role.id) in permlist:
-            print(f"Role {role.id} found in permission list")  # Debug statement
             return True
-    print("No matching roles found")  # Debug statement
     return False
 
 bot.run(token=open(os.path.join(config["config"]["secretspath"],"token.key"),"r").readline())
