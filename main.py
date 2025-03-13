@@ -20,7 +20,7 @@ config:
     consolechannel: # Channel ID to the console channel
     owner: # User ID of the owner of the server
     moderatorchannel: # Moderator channel of the server
-    moderatorrole: # Role ID for Moderators`
+    moderatorrole: # Role ID for Moderators
 
 permconfig:
     # Include the ID's to the roles to give moderator commands too

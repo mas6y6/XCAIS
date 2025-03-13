@@ -6,3 +6,4 @@ data
 **/.DS_Store
 config.yaml
 **/__pycache__
+conifg.yaml
