@@ -278,3 +278,63 @@ class DevWarnHandler:
                     jsn[str(guild.id)] = {}
                 with open(os.path.join(path,"devwarn.json"), "w") as file:
                     json.dump(jsn, file, indent=4)
+                    
+class Radio:
+    def __init__(self, voice):
+        self.queue = []
+        self.playing = False
+        self.index = 0
+        self.volume = 1.0
+        self.voice: discord.VoiceClient = voice
+        self.audiocl: discord.PCMVolumeTransformer = None
+        self.override = "continue"
+    
+    async def start(self, index=0):
+        self.index = index
+        if not self.playing:
+            if self.index < len(self.queue):
+                self.audiocl = discord.PCMVolumeTransformer(discord.FFmpegPCMAudio(self.queue[self.index]))
+                self.voice.play(self.audiocl, after=self.queuetick)
+    
+    async def addtoqueue(self, file: str):
+        self.queue.append(file)
+        
+    def queuetick(self, error=None):
+        if error:
+            print(f"Error in queuetick: {error}")
+        
+        if self.playing:
+            if self.override == "continue":
+                self.index += 1
+            elif self.override == "forward":
+                self.index += 1
+            elif self.override == "backward":
+                if self.index > 0:
+                    self.index -= 1
+            elif self.override == "replay":
+                pass
+            else:
+                self.index += 1
+            
+            self.override = "continue"
+            
+            if self.index < len(self.queue):
+                self.audiocl = discord.PCMVolumeTransformer(discord.FFmpegPCMAudio(self.queue[self.index]))
+                self.voice.play(self.audiocl, after=self.queuetick)
+    
+    async def setvolume(self, volume: float):
+        if self.audiocl:
+            self.audiocl.volume = volume
+            
+    async def stop(self):
+        self.playing = False
+        self.voice.stop()
+    
+    async def pause(self):
+        self.voice.pause()
+        
+    async def resume(self):
+        self.voice.resume()
+    
+    async def close(self):
+        self.voice.disconnect()

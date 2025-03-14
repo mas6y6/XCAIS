@@ -1,10 +1,11 @@
+import random
 import time
 import traceback
 import discord, os, sys, logging, yaml
 from discord.ext.commands.bot import Bot
 import modals
 from datetime import datetime, timedelta, timezone
-from handlers import WarningHandler, Warning, User, COOLMessageHandler
+from handlers import WarningHandler, Warning, User, COOLMessageHandler, Radio
 import discord.ext.commands
 import humanize
 
@@ -23,6 +24,7 @@ config:
     moderatorchannel: # Moderator channel of the server
     moderatorrole: # Role ID for Moderators
     xc_board: 
+    musicfolder: ./music
 
 permconfig:
     # Include the ID's to the roles to give moderator commands too
@@ -48,8 +50,6 @@ ver = "v1.0.9-beta"
 
 # Temporary voice variable
 
-voice: discord.VoiceClient = None
-
 if not os.path.exists(config["config"]["secretspath"]):
     os.makedirs(config["config"]["secretspath"])
 
@@ -74,6 +74,7 @@ warnhandler: WarningHandler = None
 xcaisguild: discord.Guild = None
 consolechannel: discord.TextChannel = None
 messagehandler: COOLMessageHandler = None
+radio: Radio = None
 
 
 async def sendtoconsole(text: str,embed=None):
@@ -537,10 +538,11 @@ Joined server at <t:{joinedserver}:F>""")
 
 @bot.tree.command(name="radio-join",description="Joins your current voice channel")
 async def radiojoin(interaction: discord.Interaction):
+    global radio
     # TODO Take this off when not this command is ready
-    if manmode():
+    if not manmode():
         embed = discord.Embed(description="Command under construction.",color=discord.Color.red())
-        await interaction.followup.send(embed=embed)
+        await interaction.response.send_message(embed=embed)
         return
     
     await interaction.response.defer()
@@ -552,7 +554,56 @@ async def radiojoin(interaction: discord.Interaction):
         await interaction.followup.send(embed=embed)
         return
     else:
-        pass
+        voice = await vs.channel.connect()
+        
+        radio = Radio(voice)
+        
+        embed = discord.Embed(description="Connected",color=discord.Color.green())
+        await interaction.followup.send(embed=embed)
+
+@bot.tree.command(name="radio-leave",description="Makes XCAIS leave current call")
+async def radioleave(interaction: discord.Interaction):
+    global voice
+    # TODO Take this off when not this command is ready
+    if not manmode():
+        embed = discord.Embed(description="Command under construction.",color=discord.Color.red())
+        await interaction.response.send_message(embed=embed)
+        return
+
+    await interaction.response.defer()
+
+    if not voice is None:
+        if voice.is_connected():
+            embed = discord.Embed(description="Left VoiceChannel!",color=discord.Color.red())
+            await voice.disconnect()
+            await interaction.followup.send(embed=embed)
+        else:
+            embed = discord.Embed(description="I am not in a VoiceChannel!",color=discord.Color.red())
+            await interaction.followup.send(embed=embed)
+    else:
+        embed = discord.Embed(description="I am not in a VoiceChannel!",color=discord.Color.red())
+        await interaction.followup.send(embed=embed)
+
+@bot.tree.command(name="radio-file",description="Adds a audio file to the queue!")
+@discord.app_commands.describe(file="File to upload")
+async def radiofile(interaction: discord.Interaction, file: discord.Attachment):
+    global radio
+    await interaction.response.defer()
+    
+    uid = random.randint(1000000000,9999999999)
+    
+    print(file.content_type)
+    
+    if not "audio" in file.content_type:
+        embed = discord.Embed(description="I cant read that file format :c",color=discord.Color.red())
+        await interaction.followup.send(embed=embed,ephemeral=True)
+    else:
+        await file.save(open(os.path.join(config["config"]["musicfolder"],file.filename),"wb"))
+    
+    radio.addtoqueue(os.path.join(config["config"]["musicfolder"],file.filename))
+    
+    embed = discord.Embed(description=f"Added {file.filename} to queue",color=discord.Color.blue())
+    await interaction.followup.send(embed=embed)
 
 @bot.event
 async def on_message(message: discord.Message):
@@ -564,17 +615,17 @@ async def on_message(message: discord.Message):
     
     if not message.author.id == bot.user.id:
         if not isinstance(message.channel,discord.DMChannel):
-            await sendtoconsole(f"[MSG_SEND] [{message.channel.name}]: {message.author.name}: {message.content}")
+            await sendtoconsole(f"[MSG_SEND] [{message.channel.name}]: {message.author.name}: {discord.utils.escape_mentions(message.content)}")
         else:
-            await sendtoconsole(f"[MSG_SEND] [**Direct Msg**]: {message.author.name}: {message.content}")
+            await sendtoconsole(f"[MSG_SEND] [**Direct Msg**]: {message.author.name}: {discord.utils.escape_mentions(message.content)}")
 
 @bot.event
 async def on_message_delete(message: discord.Message):
     if not message.author.id == bot.user.id:
         if not isinstance(message.channel,discord.DMChannel):
-            await sendtoconsole(f"[MSG_DEL] [{message.channel.name}]: {message.author.name}: {message.content}")
+            await sendtoconsole(f"[MSG_DEL] [{message.channel.name}]: {message.author.name}: {discord.utils.escape_mentions(message.content)}")
         else:
-            await sendtoconsole(f"[MSG_DEL] [**Direct Msg**]: {message.author.name}: {message.content}")
+            await sendtoconsole(f"[MSG_DEL] [**Direct Msg**]: {message.author.name}: {discord.utils.escape_mentions(message.content)}")
 
 @bot.event
 async def on_reaction_add(reaction: discord.Reaction, user: discord.Member):
