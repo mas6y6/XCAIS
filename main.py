@@ -3,9 +3,10 @@ import traceback
 import discord, os, sys, logging, yaml
 from discord.ext.commands.bot import Bot
 import modals
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from handlers import WarningHandler, Warning, User, COOLMessageHandler
 import discord.ext.commands
+import humanize
 
 # Creates config.yaml if it doesnt exist
 if not os.path.exists("config.yaml"):
@@ -33,6 +34,9 @@ permconfig:
 
 emoji:
     XC: 
+
+maintenance:
+    toggle: false
 """)
     f.close()
 
@@ -41,6 +45,10 @@ guild = config["config"]["guild"]
 
 # Bot version
 ver = "v1.0.9-beta"
+
+# Temporary voice variable
+
+voice: discord.VoiceClient = None
 
 if not os.path.exists(config["config"]["secretspath"]):
     os.makedirs(config["config"]["secretspath"])
@@ -58,6 +66,7 @@ intents.all()
 intents.message_content = True
 intents.guilds = True
 intents.members = True
+MAX_TIMEOUT = timedelta(days=28)
 
 bot = Bot(command_prefix="x>",intents=intents)
 
@@ -65,6 +74,7 @@ warnhandler: WarningHandler = None
 xcaisguild: discord.Guild = None
 consolechannel: discord.TextChannel = None
 messagehandler: COOLMessageHandler = None
+
 
 async def sendtoconsole(text: str,embed=None):
     global consolechannel
@@ -192,17 +202,52 @@ class BanView(discord.ui.View):
         
     @discord.ui.button(label="Proceed",style=discord.ButtonStyle.red)
     async def proceed(self, interaction: discord.Interaction, button: discord.Button):
-        try:
-            member: discord.Member = await xcaisguild.get_member(self.userid)
-            if self.action:
-                await member.ban(reason="Member banned for reaching higher then 12 warnings")
+        if interaction.user.id == config["config"]["owner"]:
+            try:
+                member: discord.Member = await xcaisguild.get_member(self.userid)
+                if self.action:
+                    embed = discord.Embed(title="PERMANENTLY BANNED", description="Banned for reaching higher than 12 warnings\n\nTo return to the server please submit a appeal to **technologicalshadows**",color=discord.Color.red())
+                    member.send(embed=embed)
+                    await member.ban(reason="Member banned for reaching higher then 12 warnings")
+                else:
+                    embed = discord.Embed(title="Banned", description="Temporarily banned for 28 days for reaching higher than 9 warnings",color=discord.Color.red())
+                    member.send(embed=embed)
+                    await member.timeout(datetime.timedelta(days=28), reason="Member temporarily banned for reaching higher than 9 warnings")
+            except:
+                embed = discord.Embed(title="An error occurred", description="An unexpected error has occurred")
+                traceback.print_exc()
+                await interaction.response.send_message(embed=embed)
             else:
-                await member.timeout(datetime.timedelta(days=30), reason="Member temporarily banned for reaching higher than 9 warnings")
-        except:
-            embed = discord.Embed(title="An error occurred", description="An unexpected error has occurred")
-            traceback.print_exc()
-        await interaction.response.pong()
- 
+                embed = discord.Embed(description="Member Banned")
+                await interaction.response.send_message(embed=embed)
+        else:
+            embed = discord.Embed(title="ID Identification Failure", description=f"You must be **{xcaisguild.get_member(config['config']['owner']).name}** to perform this action")
+            await interaction.response.send_message(embed=embed)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 async def notifyowner(userid, md = True, warnings = 9):
     moderatorchan: discord.TextChannel = xcaisguild.get_channel(config["config"]["moderatorchannel"])
@@ -235,7 +280,7 @@ async def send_message(interaction: discord.Interaction ,message: str, channel: 
         await interaction.response.send_message(embed=embed, ephemeral=True)
         return
     await interaction.response.defer(ephemeral=True)
-    await sendtoconsole(f"[SAY] [CHL: {channel.name}]: {message}")
+    await sendtoconsole(f"[SAY] [{interaction.user.name}] [CHL: {channel.name}]: {message}")
     await channel.send(message)
     
     embed = discord.Embed(color=discord.Color.green(),title="**Sent**")
@@ -254,7 +299,7 @@ async def senddm(interaction: discord.Interaction, message: str, user: discord.M
         embed = discord.Embed(color=discord.Color.red(),title="Error: i can't DM myself >:C")
         await interaction.followup.send(ephemeral=True,embed=embed)
     
-    await sendtoconsole(f"[SENDDM] [TO: {user.name}]: {message}")
+    await sendtoconsole(f"[SENDDM] [{interaction.user.name}] [TO: {user.name}]: {message}")
     await user.send(message)
     
     embed = discord.Embed(color=discord.Color.green(),title="**Sent**")
@@ -288,7 +333,7 @@ async def sendbyfile(interaction: discord.Interaction, file: discord.Attachment,
             await file.save("temp.txt")
             txt = open("temp.txt").read()
             
-            await sendtoconsole(f"[SAY] [CHL: {channel.name}]: {txt}")
+            await sendtoconsole(f"[SAY] [{interaction.user.name}] [CHL: {channel.name}]: {txt}")
             
             await channel.send(txt)
             
@@ -434,9 +479,88 @@ async def deletewarning(interaction: discord.Interaction, user: discord.Member):
 Do you wish to proceed?""")
     await interaction.followup.send(embed=embed,ephemeral=True)
 
+@bot.tree.command(name="timeout",description="Times out user for (Seconds Minutes Days) MAX: 28 days")
+@discord.app_commands.describe(user="User to timeout",seconds="Seconds",minutes="Minutes",hours="Hours",days="Days")
+async def bettertimeout(interaction: discord.Interaction, user: discord.Member, seconds: int, minutes: int, hours: int, days: int):
+    if not hasperm(interaction.user, config["permconfig"]["moderatorcommands"]):
+        embed = discord.Embed(color=discord.Color.red(), description="**You don't have access to this command**")
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+        return
+    await interaction.response.defer(ephemeral=True)
+    
+    duration = timedelta(seconds=seconds, minutes=minutes, hours=hours, days=days)
+    
+    if duration > MAX_TIMEOUT:
+        duration = MAX_TIMEOUT
+    
+    timeout_until = datetime.now(timezone.utc) + duration
+    await user.timeout(timeout_until, reason=f"Timed out by {interaction.user.name} for {humanize.precisedelta(duration)}")
+    
+    embed = discord.Embed(color=discord.Color.green(), description=f"**{user.name} has been timed out for {humanize.precisedelta(duration)}**")
+    
+    await interaction.followup.send(embed=embed, ephemeral=True)
+    await sendtoconsole(f"{user.name} has been timed out for {humanize.precisedelta(duration)}")
+
+@bot.tree.command(name="moderationstatus",description="Shows that happened to what user")
+@discord.app_commands.describe(user="User to check status")
+async def moderationstatus(interaction: discord.Interaction, user: discord.Member):
+    await interaction.response.defer(ephemeral=True)
+    
+    if user.timed_out_until is None:
+        timedout = "None"
+    else:
+        timedout = humanize.precisedelta(user.timed_out_until - datetime.now(timezone.utc))
+    
+    try:
+        voice = await user.fetch_voice()    
+        servermuted = voice.mute
+        serverdeaf = voice.deaf
+        supressed = voice.suppress
+    except:
+        servermuted = "Not connected"
+        serverdeaf = "Not connected"
+        supressed = "Not connected"
+    
+    joinedserver = int(user.joined_at.timestamp())
+    
+    embed = discord.Embed(color=discord.Color.orange(),title=user.name,description=f"""
+Timed out: {timedout}
+
+Servermuted: {servermuted}
+Serverdeaf: {serverdeaf}
+
+Supressed: {supressed}
+
+Joined server at <t:{joinedserver}:F>""")
+    await interaction.followup.send(embed=embed,ephemeral=True)
+
+
+@bot.tree.command(name="radio-join",description="Joins your current voice channel")
+async def radiojoin(interaction: discord.Interaction):
+    # TODO Take this off when not this command is ready
+    if manmode():
+        embed = discord.Embed(description="Command under construction.",color=discord.Color.red())
+        await interaction.followup.send(embed=embed)
+        return
+    
+    await interaction.response.defer()
+    
+    vs = interaction.user.voice
+    
+    if vs is None:
+        embed = discord.Embed(description="You are not in a VoiceChannel!",color=discord.Color.red())
+        await interaction.followup.send(embed=embed)
+        return
+    else:
+        pass
+
 @bot.event
 async def on_message(message: discord.Message):
     await bot.process_commands(message)
+    
+    if not message.author.id == bot.user.id:
+        if not message.author.bot or message.author.system:
+            await messagehandler.add_message(message.author.id)
     
     if not message.author.id == bot.user.id:
         if not isinstance(message.channel,discord.DMChannel):
@@ -478,23 +602,33 @@ async def on_reaction_add(reaction: discord.Reaction, user: discord.Member):
 
 @bot.event
 async def on_ready():
-    global xcaisguild, consolechannel, warnhandler
+    global xcaisguild, consolechannel, warnhandler, messagehandler
     """Event handler for when the bot is ready."""
     
     xcaisguild = bot.get_guild(config["config"]["guild"])
     consolechannel = xcaisguild.get_channel(config["config"]["consolechannel"])
     print(f"Connected as {bot.user}")
     
-    await sendtoconsole("Bot restarted syncing commands...")
+    if config["maintenance"]["toggle"]:
+        await sendtoconsole("XCAIS is under **maintenance mode**. All unfinished features will be avaiable to to use")
+    await sendtoconsole("Starting...")
+    
+    if config["maintenance"]["toggle"]:
+        await bot.change_presence(activity=discord.CustomActivity(name="🛠️ UNDER MAINTENANCE"),status=discord.Status.do_not_disturb)
+    else:
+        await bot.change_presence(activity=discord.Game(name="XCDPPP", type=5),status=discord.Status.online)
     
     warnhandler = WarningHandler(config["config"]["data"],bot.get_guild(config["config"]["guild"]))
     await sendtoconsole("Warning handler thread started")
+    
+    messagehandler = COOLMessageHandler(config["config"]["data"],bot.get_guild(config["config"]["guild"]))
+    await sendtoconsole("Message Tier Handler started")
+    
     
     c = await bot.tree.sync()
     print(f"Synced {len(c)} commands")
 
     await sendtoconsole(f"Synced {len(c)} slash commands.")
-    await bot.change_presence(activity=discord.Game(name="XCAIS Online", type=5))
 
 @bot.event
 async def on_error(event: str, *args, **kwargs):
@@ -536,5 +670,8 @@ def hasperm(userid: discord.Member, permlist: list[int]):
         if int(role.id) in permlist:
             return True
     return False
+
+def manmode():
+    return config["maintenance"]["toggle"]
 
 bot.run(token=open(os.path.join(config["config"]["secretspath"],"token.key"),"r").readline())
