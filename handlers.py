@@ -70,7 +70,7 @@ class WarningHandler:
                 
                 try:
                     # TODO: Uncomment this line below as its the function that times out users
-                    # await self.guild.get_member(int(userid)).timeout(until)
+                    await self.guild.get_member(int(userid)).timeout(until)
                     pass
                 except discord.errors.Forbidden:
                     returnstatus = {"status":"forbidden"}
@@ -125,6 +125,17 @@ class WarningHandler:
         
         with open(os.path.join(self.path,"warns.json"), "w", encoding="utf-8") as file:
             json.dump(jsn, file, indent=4, default=str)
+            
+    async def clearwarnings(self, userid):
+        jsn = json.load(open(os.path.join(self.path, "warns.json"), "r"))
+        
+        if str(userid) not in jsn[str(self.guild.id)]:
+            jsn[str(self.guild.id)][str(userid)] = {"timeout_count": 0, "max_warnings_before_timeout": 3, "warns": []}
+        
+        jsn[str(self.guild.id)][str(userid)]["warns"] = []
+        
+        with open(os.path.join(self.path,"warns.json"), "w", encoding="utf-8") as file:
+            json.dump(jsn, file, indent=4, default=str)
 
 class Warning:
     def __init__(self,reason, timestamp, expire, userid, assignedby, id):
@@ -142,3 +153,18 @@ class User:
         self.warns: list[Warning] = []
         for i in data["warns"]:
             self.warns.append(Warning(i["reason"],i["timestamp"],i["expire"],i["userid"],i["assignedby"],i["id"]))
+            
+class COOLMessageHandler:
+    def __init__(self, path, guild: discord.Guild):
+        self.path = path
+        self.guild = guild
+        if not os.path.exists(os.path.join(path,"message.json")):
+            jsn = {guild.id: {}}
+            json.dump(jsn, open(os.path.join(path,"message.json"), "w"), indent=4)
+        else:
+            with open(os.path.join(path,"message.json"), "r") as file:
+                jsn = json.load(file)
+                if str(guild.id) not in jsn:
+                    jsn[str(guild.id)] = {}
+                with open(os.path.join(path,"message.json"), "w") as file:
+                    json.dump(jsn, file, indent=4)
