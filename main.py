@@ -4,7 +4,7 @@ import discord, os, sys, logging, yaml
 from discord.ext.commands.bot import Bot
 import modals
 from datetime import datetime
-from handlers import WarningHandler, Warning, User
+from handlers import WarningHandler, Warning, User, COOLMessageHandler
 import discord.ext.commands
 
 # Creates config.yaml if it doesnt exist
@@ -21,6 +21,7 @@ config:
     owner: # User ID of the owner of the server
     moderatorchannel: # Moderator channel of the server
     moderatorrole: # Role ID for Moderators
+    xc_board: 
 
 permconfig:
     # Include the ID's to the roles to give moderator commands too
@@ -30,8 +31,8 @@ permconfig:
 
     saycommands: []
 
-
-
+emoji:
+    XC: 
 """)
     f.close()
 
@@ -39,7 +40,7 @@ config = yaml.safe_load(open("config.yaml"))
 guild = config["config"]["guild"]
 
 # Bot version
-ver = "v0.1.3-alpha"
+ver = "v1.0.9-beta"
 
 if not os.path.exists(config["config"]["secretspath"]):
     os.makedirs(config["config"]["secretspath"])
@@ -63,6 +64,7 @@ bot = Bot(command_prefix="x>",intents=intents)
 warnhandler: WarningHandler = None
 xcaisguild: discord.Guild = None
 consolechannel: discord.TextChannel = None
+messagehandler: COOLMessageHandler = None
 
 async def sendtoconsole(text: str,embed=None):
     global consolechannel
@@ -177,7 +179,7 @@ class DeleteWarnView(discord.ui.View):
                 await interaction.response.send_message(embed=embed,view=DeleteWarnMenu(self.user,warns),ephemeral=True)
 
 class BanView(discord.ui.View):
-    def __init__(self,userid, timeout=None, action="monthban"):
+    def __init__(self,userid, timeout=None, action=True):
         self.userid = userid
         self.action = action
         super().__init__(timeout=timeout)
@@ -192,7 +194,10 @@ class BanView(discord.ui.View):
     async def proceed(self, interaction: discord.Interaction, button: discord.Button):
         try:
             member: discord.Member = await xcaisguild.get_member(self.userid)
-            
+            if self.action:
+                await member.ban(reason="Member banned for reaching higher then 12 warnings")
+            else:
+                await member.timeout(datetime.timedelta(days=30), reason="Member temporarily banned for reaching higher than 9 warnings")
         except:
             embed = discord.Embed(title="An error occurred", description="An unexpected error has occurred")
             traceback.print_exc()
@@ -447,7 +452,29 @@ async def on_message_delete(message: discord.Message):
         else:
             await sendtoconsole(f"[MSG_DEL] [**Direct Msg**]: {message.author.name}: {message.content}")
 
-
+@bot.event
+async def on_reaction_add(reaction: discord.Reaction, user: discord.Member):
+    print(reaction.message.reactions)
+    
+    def checka():
+        reaction_id = 1349975663871787038
+        
+        for react in reaction.message.reactions:
+            if react.emoji.id == reaction_id and react.count >= 1:
+                return True
+        return False
+    
+    if reaction.emoji.id == 1248777821439004694:
+        if reaction.count >= 2:
+            if checka():
+                pass
+            else:
+                msg: discord.Message = reaction.message
+                chl: discord.TextChannel = xcaisguild.get_channel(config["config"]["xc_board"])
+                await chl.send(content=f"**Message from {reaction.message.channel.name}:\n**"+msg.content, embeds=msg.embeds, files=[await attachment.to_file() for attachment in msg.attachments])
+                await reaction.message.add_reaction(discord.PartialEmoji(name="success",id=1349975663871787038))
+        
+    await sendtoconsole(f"[REACTION_ADD] [{user.name}]: {reaction.emoji} to: {reaction.message.content}")
 
 @bot.event
 async def on_ready():
@@ -475,6 +502,7 @@ async def on_error(event: str, *args, **kwargs):
     if consolechannel is not None:
         error_message = f"[**INTERNAL ERROR OCCURRED**]: `{event}`\n```{traceback.format_exc()}```"
         await consolechannel.send(error_message)
+        traceback.print_exc()
     else:
         print(f"Error in {event}:")
         traceback.print_exc()
