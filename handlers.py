@@ -90,8 +90,8 @@ Reason: Reaching {len(jsn[str(self.guild.id)][str(userid)]["warns"])} warnings
 
 **You have {len(jsn[str(self.guild.id)][str(userid)]["warns"])} warnings**
 
-Assigened by: **{self.guild.get_member(assignedby).name}**
-Assigened at: <t:{int(time.time())}:F>""")
+Assigned by: **{self.guild.get_member(assignedby).name}**
+Assigned at: <t:{int(time.time())}:F>""")
             await m.send(embed=embed)
                 
             
@@ -285,16 +285,17 @@ class Radio:
         self.playing = False
         self.index = 0
         self.volume = 1.0
+        self.paused = False
         self.voice: discord.VoiceClient = voice
         self.audiocl: discord.PCMVolumeTransformer = None
         self.override = "continue"
     
     async def start(self, index=0):
         self.index = index
-        if not self.playing:
-            if self.index < len(self.queue):
-                self.audiocl = discord.PCMVolumeTransformer(discord.FFmpegPCMAudio(self.queue[self.index]))
-                self.voice.play(self.audiocl, after=self.queuetick)
+        if not self.playing and self.index < len(self.queue):
+            self.audiocl = discord.PCMVolumeTransformer(discord.FFmpegPCMAudio(self.queue[self.index]))
+            self.voice.play(self.audiocl, after=self.queuetick)
+            self.playing = True
     
     async def addtoqueue(self, file: str):
         self.queue.append(file)
@@ -303,7 +304,7 @@ class Radio:
         if error:
             print(f"Error in queuetick: {error}")
         
-        if self.playing:
+        if self.playing and not self.paused:
             if self.override == "continue":
                 self.index += 1
             elif self.override == "forward":
@@ -321,20 +322,45 @@ class Radio:
             if self.index < len(self.queue):
                 self.audiocl = discord.PCMVolumeTransformer(discord.FFmpegPCMAudio(self.queue[self.index]))
                 self.voice.play(self.audiocl, after=self.queuetick)
-    
+            else:
+                self.playing = False
+        
     async def setvolume(self, volume: float):
-        if self.audiocl:
-            self.audiocl.volume = volume
-            
+        if 0.0 <= volume <= 1.0:
+            self.volume = volume
+            if self.audiocl:
+                self.audiocl.volume = volume
+    
     async def stop(self):
-        self.playing = False
         self.voice.stop()
+        self.queuetick()  # Explicitly call queuetick after stopping
     
     async def pause(self):
+        self.paused = True
         self.voice.pause()
         
     async def resume(self):
+        self.paused = False
         self.voice.resume()
     
     async def close(self):
-        self.voice.disconnect()
+        self.playing = False
+        await self.voice.disconnect()
+    
+    async def forward(self):
+        self.override = "forward"
+        self.voice.stop()
+    
+    async def previous(self):
+        self.override = "backward"
+        self.voice.stop()
+        
+    async def replay(self):
+        self.override = "replay"
+        self.voice.stop()
+        
+    def get_queue(self):
+        returndata = []
+        for i in self.queue:
+            returndata.append(os.path.basename(i))
+        return returndata

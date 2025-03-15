@@ -46,7 +46,7 @@ config = yaml.safe_load(open("config.yaml"))
 guild = config["config"]["guild"]
 
 # Bot version
-ver = "v1.0.9-beta"
+ver = "v1.4-release"
 
 # Temporary voice variable
 
@@ -225,12 +225,95 @@ class BanView(discord.ui.View):
             embed = discord.Embed(title="ID Identification Failure", description=f"You must be **{xcaisguild.get_member(config['config']['owner']).name}** to perform this action")
             await interaction.response.send_message(embed=embed)
 
+class RadioView(discord.ui.View):
+    def __init__(self, *, timeout = None):
+        super().__init__(timeout=timeout)
+    
+    @discord.ui.button(emoji=discord.PartialEmoji(name="prevous",id=1350145867532734495),style=discord.ButtonStyle.blurple,disabled=True)
+    async def prevousbutton(self, interaction: discord.Interaction, button: discord.Button):
+        global radio
+        await interaction.response.defer()
+        
+        await radio.previous()
+        
+        await interaction.edit_original_response(view=self)
+    
+    @discord.ui.button(emoji=discord.PartialEmoji(name="play",id=1350145946809532437),style=discord.ButtonStyle.blurple)
+    async def playbutton(self, interaction: discord.Interaction, button: discord.Button):
+        global radio
+        await interaction.response.defer()
+        
+        if radio.playing:
+            if radio.paused:
+                await radio.resume()
+                button.style = discord.ButtonStyle.blurple
+                button.emoji = discord.PartialEmoji(name="pause",id=1350145932901224620)
+            else:
+                await radio.pause()
+                button.style = discord.ButtonStyle.green
+                button.emoji = discord.PartialEmoji(name="play",id=1350145946809532437)
+        else:
+            if len(radio.queue) >= 1:
+                await radio.start()
+                button.style = discord.ButtonStyle.blurple
+                button.emoji = discord.PartialEmoji(name="pause",id=1350145932901224620)
+                self.prevousbutton.disabled = False
+                self.forwardbutton.disabled = False
+                self.replaybutton.disabled = False
+            else:
+                await interaction.followup.send(embed=discord.Embed(description="No songs are in the list",color=discord.Color.red()))
+        
+        await interaction.edit_original_response(view=self)
+    
+    @discord.ui.button(emoji=discord.PartialEmoji(name="forward",id=1350145879344152669),style=discord.ButtonStyle.blurple,disabled=True)
+    async def forwardbutton(self, interaction: discord.Interaction, button: discord.Button):
+        global radio
+        await interaction.response.defer()
+        
+        await radio.forward()
+        
+        await interaction.edit_original_response(view=self)
+    
+    @discord.ui.button(emoji=discord.PartialEmoji(name="stop",id=1350145855973363712),style=discord.ButtonStyle.danger)
+    async def stopbutton(self, interaction: discord.Interaction, button: discord.Button):
+        global radio
+        await interaction.response.defer()
+        
+        await radio.close()
+        
+        embed = discord.Embed(description="Left VoiceChannel!",color=discord.Color.green())
+        await interaction.followup.send(embed=embed)
+        
+        await interaction.delete_original_response()
+    
+    @discord.ui.button(emoji=discord.PartialEmoji(name="reset",id=1350145841888891020),style=discord.ButtonStyle.blurple,disabled=True)
+    async def replaybutton(self, interaction: discord.Interaction, button: discord.Button):
+        global radio
+        await interaction.response.defer()
+        
+        await radio.replay()
+        
+        await interaction.edit_original_response(view=self)
 
-
-
-
-
-
+    @discord.ui.button(emoji=discord.PartialEmoji(name="queue",id=1350145816123146323),style=discord.ButtonStyle.blurple)
+    async def queuebutton(self, interaction: discord.Interaction, button: discord.Button):
+        global radio
+        await interaction.response.defer(ephemeral=True)
+        
+        desc = f"""Index: {radio.index}\n"""
+        s1 = 0
+        for _ in range(len(radio.queue)):
+            
+            if s1 == radio.index:
+                desc += f"- **{os.path.basename(radio.queue[s1])}**\n"
+            else:
+                desc += "- " + os.path.basename(radio.queue[s1]) + "\n"
+            s1 += 1
+        
+        embed = discord.Embed(title="Queue",description=desc,color=discord.Color.blue())
+        await interaction.followup.send(embed=embed,ephemeral=True)
+        
+        await interaction.edit_original_response(view=self)
 
 
 
@@ -558,12 +641,11 @@ async def radiojoin(interaction: discord.Interaction):
         
         radio = Radio(voice)
         
-        embed = discord.Embed(description="Connected",color=discord.Color.green())
-        await interaction.followup.send(embed=embed)
+        await interaction.followup.send(view=RadioView())
 
 @bot.tree.command(name="radio-leave",description="Makes XCAIS leave current call")
 async def radioleave(interaction: discord.Interaction):
-    global voice
+    global radio
     # TODO Take this off when not this command is ready
     if not manmode():
         embed = discord.Embed(description="Command under construction.",color=discord.Color.red())
@@ -572,11 +654,13 @@ async def radioleave(interaction: discord.Interaction):
 
     await interaction.response.defer()
 
-    if not voice is None:
-        if voice.is_connected():
+    if not radio is None:
+        if radio.voice.is_connected():
             embed = discord.Embed(description="Left VoiceChannel!",color=discord.Color.red())
-            await voice.disconnect()
+            await radio.close()
             await interaction.followup.send(embed=embed)
+            
+            radio = None
         else:
             embed = discord.Embed(description="I am not in a VoiceChannel!",color=discord.Color.red())
             await interaction.followup.send(embed=embed)
@@ -590,20 +674,42 @@ async def radiofile(interaction: discord.Interaction, file: discord.Attachment):
     global radio
     await interaction.response.defer()
     
-    uid = random.randint(1000000000,9999999999)
-    
-    print(file.content_type)
-    
-    if not "audio" in file.content_type:
-        embed = discord.Embed(description="I cant read that file format :c",color=discord.Color.red())
-        await interaction.followup.send(embed=embed,ephemeral=True)
+    if not radio is None:
+        if radio.voice.is_connected():
+            if not "audio" in file.content_type:
+                embed = discord.Embed(description="I cant read that file format :c",color=discord.Color.red())
+                await interaction.followup.send(embed=embed,ephemeral=True)
+            else:
+                await file.save(open(os.path.join(config["config"]["musicfolder"],file.filename),"wb"))
+            
+                await radio.addtoqueue(os.path.join(config["config"]["musicfolder"],file.filename))
+                
+                embed = discord.Embed(description=f"Added {file.filename} to queue",color=discord.Color.green())
+                await interaction.followup.send(embed=embed)
+        else:
+            embed = discord.Embed(description="I am not in a VoiceChannel!",color=discord.Color.red())
+            await interaction.followup.send(embed=embed)
     else:
-        await file.save(open(os.path.join(config["config"]["musicfolder"],file.filename),"wb"))
+        embed = discord.Embed(description="I am not in a VoiceChannel!",color=discord.Color.red())
+        await interaction.followup.send(embed=embed)
+
+@bot.tree.command(name="radio-volume",description="Volume")
+@discord.app_commands.describe(volume="Volume to change (e.g 100 is 100%)")
+async def radiovolume(interaction: discord.Interaction, volume: int):
+    global radio
+    await interaction.response.defer()
     
-    radio.addtoqueue(os.path.join(config["config"]["musicfolder"],file.filename))
-    
-    embed = discord.Embed(description=f"Added {file.filename} to queue",color=discord.Color.blue())
-    await interaction.followup.send(embed=embed)
+    if not radio is None:
+        if radio.voice.is_connected():
+            if volume >= 100:
+                embed = discord.Embed(description="Kill your self",color=discord.Color.red())
+                await interaction.followup.send(embed=embed)
+        else:
+            embed = discord.Embed(description="I am not in a VoiceChannel!",color=discord.Color.red())
+            await interaction.followup.send(embed=embed)
+    else:
+        embed = discord.Embed(description="I am not in a VoiceChannel!",color=discord.Color.red())
+        await interaction.followup.send(embed=embed)
 
 @bot.event
 async def on_message(message: discord.Message):
