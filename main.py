@@ -75,6 +75,7 @@ xcaisguild: discord.Guild = None
 consolechannel: discord.TextChannel = None
 messagehandler: COOLMessageHandler = None
 radio: Radio = None
+radioview: discord.ui.View = None
 
 
 async def sendtoconsole(text: str,embed=None):
@@ -621,12 +622,7 @@ Joined server at <t:{joinedserver}:F>""")
 
 @bot.tree.command(name="radio-join",description="Joins your current voice channel")
 async def radiojoin(interaction: discord.Interaction):
-    global radio
-    # TODO Take this off when not this command is ready
-    if not manmode():
-        embed = discord.Embed(description="Command under construction.",color=discord.Color.red())
-        await interaction.response.send_message(embed=embed)
-        return
+    global radio, radioview
     
     await interaction.response.defer()
     
@@ -641,16 +637,13 @@ async def radiojoin(interaction: discord.Interaction):
         
         radio = Radio(voice)
         
-        await interaction.followup.send(view=RadioView())
+        radioview = RadioView()
+        
+        await interaction.followup.send(view=radioview)
 
 @bot.tree.command(name="radio-leave",description="Makes XCAIS leave current call")
 async def radioleave(interaction: discord.Interaction):
     global radio
-    # TODO Take this off when not this command is ready
-    if not manmode():
-        embed = discord.Embed(description="Command under construction.",color=discord.Color.red())
-        await interaction.response.send_message(embed=embed)
-        return
 
     await interaction.response.defer()
 
@@ -704,6 +697,30 @@ async def radiovolume(interaction: discord.Interaction, volume: int):
             if volume >= 100:
                 embed = discord.Embed(description="Kill your self",color=discord.Color.red())
                 await interaction.followup.send(embed=embed)
+            else:
+                volume = float(volume) / 100
+                radio.set_volume(volume)
+                embed = discord.Embed(description=f"Volume set to: {volume}",color=discord.Color.red())
+                await interaction.followup.send(embed=embed)
+        else:
+            embed = discord.Embed(description="I am not in a VoiceChannel!",color=discord.Color.red())
+            await interaction.followup.send(embed=embed)
+    else:
+        embed = discord.Embed(description="I am not in a VoiceChannel!",color=discord.Color.red())
+        await interaction.followup.send(embed=embed)
+
+@bot.tree.command(name="radio-panel",description="Resends the panel (Making old one inactive)")
+async def radiopanel(interaction: discord.Interaction):
+    global radio, radioview
+    
+    await interaction.response.defer()
+    
+    if not radioview is None:
+        if radio.voice.is_connected():
+            radioview.stop()
+            radioview = RadioView()
+            
+            await interaction.followup.send(view=radioview)
         else:
             embed = discord.Embed(description="I am not in a VoiceChannel!",color=discord.Color.red())
             await interaction.followup.send(embed=embed)
